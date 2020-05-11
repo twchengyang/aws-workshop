@@ -1,35 +1,50 @@
 version: "3"
 services:
-  backend:
-    image: 'nginx:alpine'
+  db:
+    image: 'postgres:alpine'
+    environment:
+      POSTGRES_PASSWORD: 'password'
     volumes:
-    - "./backend:/usr/share/nginx/html"
-    networks: 
+    - persistent:/var/lib/postgresql/data
+    networks:
     - "private"
-  serv:
-    image: 'nginx:alpine'
-    volumes: 
-    - "./etc/serv/default.conf:/etc/nginx/conf.d/default.conf"
-    networks: 
+  api:
+    build: ./service
+    volumes:
+    - "ivy-cache:/root/.ivy2/cache"
+    - "docker-scala-sbt-cache:/root/.sbt"
+    - "coursier-cache:/root/.cache/coursier"
+    networks:
     - "private"
     ports:
-    - "8000:80"
+    - 8007:8080
   gate:
     image: 'nginx:alpine'
-    volumes: 
+    volumes:
     - "./etc/gate/default.conf:/etc/nginx/conf.d/default.conf"
-    networks: 
+    networks:
     - "private"
     - "public"
     ports:
     - "8008:80"
   frontend:
-    image: 'nginx:alpine'
+    build: ./static
     volumes:
-    - "./frontend:/usr/share/nginx/html"
+    - "ivy-cache:/root/.ivy2/cache"
+    - "docker-scala-sbt-cache:/root/.sbt"
+    - "coursier-cache:/root/.cache/coursier"
     networks:
     - "public"
+    - "private"
+    ports:
+    - 8009:8080
 
 networks:
   private:
   public:
+
+volumes:
+  persistent:
+  ivy-cache:
+  docker-scala-sbt-cache:
+  coursier-cache:

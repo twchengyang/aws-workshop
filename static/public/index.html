@@ -1,0 +1,24 @@
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>GTraceroute</title>
+    <script>
+        const makeJoke = () => {
+            fetch(`/api/joke`)
+                .then(res => {
+                    return res.json()
+                })
+                .then(
+                    data => document.getElementById('joke').innerText = data.joke,
+                    () => alert('Error!')
+                )
+        };
+    </script>
+</head>
+<body>
+<button onclick="makeJoke()">Make a joke</button>
+<div>
+    <span id="joke"></span>
+</div>
+</body>
+</html>
