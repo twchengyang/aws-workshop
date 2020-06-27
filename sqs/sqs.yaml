@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: For aws training
+
+Resources:
+  LambdaLogGroupCY:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub /aws/lambda/${EventsConsumerCY}
+      RetentionInDays: 7
+  
+  EventsConsumerCY:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: EventsConsumerCY
+      Role: arn:aws:iam::494526681395:role/for-aws-training
+      Handler: index.handler
+      Runtime: nodejs12.x
+      Code:
+        ZipFile: |
+          exports.handler = (event, context, callback) => {
+            console.log("Event: ", JSON.stringify(event));
+          }
+      MemorySize: 128
+      Timeout: 5
+
+  EventSourceMappingCY:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt EventQueueCY.Arn
+      FunctionName: !GetAtt EventsConsumerCY.Arn
+      StartingPosition: LATEST
+
+  EventQueueCY:
+    Type: AWS::SQS::Queue
+    Properties:
+      # KmsMasterKeyId: String
+      MessageRetentionPeriod: 604800
+      QueueName: EventQueueCY
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueueCY.Arn
+        maxReceiveCount: 3
+      Tags: 
+        - Key: Purpose
+          Value: aws-training
+      VisibilityTimeout: 300
+  DeadLetterQueueCY:
+    Type: AWS::SQS::Queue
+  EventQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref EventQueueCY
+      PolicyDocument:
+        Statement:
+          - Action:
+              - sqs:SendMessage
+              - sqs:ReceiveMessage
+            Effect: Allow
+            Resource:
+              - !Ref EventQueueCY
+            Principal:
+              Service:
+                - sns.amazonaws.com
+
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      # KmsMasterKeyId: 
+      Subscription:
+        - Endpoint: cheng.yang@thoughtworks.com
+          Protocol: email
+        - Endpoint: !GetAtt SQSQueue.Arn
+          Protocol: sqs
+  SNSPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sns:Subscribe
+              - sns:Publish
+              - sns:ListSubscriptionsByTopic
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Resource: !Ref SNSTopic
+      Topics:
+        - !Ref SNSTopic
+
+  
+  ScheduleTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ScheduleTriggerRule
+      ScheduleExpression: rate(5 minute)
+      State: ENABLED
+      Targets:
+      - Id: schedule-trigger-sns
+        Arn: !Ref SNSTopic
