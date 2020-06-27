@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: The auto roster slackbot lambda for auto sending slack messages
+
+Resources:
+  CountAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Alarm if count is present.
+      Namespace: cheng-yang
+      MetricName: HitCount
+      Statistic: Maximum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '0'
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+      - Ref: 'EmailTopic'
+
+  EmailTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: cheng.yang@thoughtworks.com
+          Protocol: email
+
+  ScheduleTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ScheduleTriggerRule
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+      - Id: schedule-trigger-event
+        Arn: !GetAtt TriggerLambda.Arn
+
+  PermissionForEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !GetAtt TriggerLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+
+  ScheduleLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub /aws/lambda/${TriggerLambda}
+      RetentionInDays: 7
+
+  TriggerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: 'ScheduleTriggeredLambda'
+      Role: arn:aws:iam::494526681395:role/for-aws-training
+      Handler: index.handler
+      Runtime: nodejs12.x
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const cloudWatch = new AWS.CloudWatch();
+
+          exports.handler = async () => {
+            var params = {
+              Namespace: "cheng-yang",
+              MetricData: [
+                {
+                  MetricName: "HitCount",
+                  Value: 1
+                }
+              ]
+            }
+            const res = await cloudWatch.putMetricData(params).promise();
+            console.log("Response from CloudWatch: ", res);
+            console.log("Successful");
+          }
+      MemorySize: 128
+      Timeout: 5
+
+  LogsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ScheduleLambdaLogGroup
+      FilterPattern: "Successful"
+      MetricTransformations:
+        - MetricValue: 1
+          MetricNamespace: 'cheng-yang'
+          MetricName: 'SuccessResponse'
+
+  LambdaLogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      MetricName: SuccessResponse
+      Namespace: cheng-yang
+      Statistic: Maximum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '1'
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      InsufficientDataActions:
+        - Ref: EmailTopic
+      AlarmActions:
+        - Ref: EmailTopic
