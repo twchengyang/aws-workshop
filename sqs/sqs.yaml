@@ -64,7 +64,6 @@ Resources:
   EventQueueCY:
     Type: AWS::SQS::Queue
     Properties:
-      # KmsMasterKeyId: String
       MessageRetentionPeriod: 604800
       QueueName: EventQueueCY
       RedrivePolicy:
@@ -84,7 +83,7 @@ Resources:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
-        - !Ref EventQueueCY
+        - "https://sqs.ap-southeast-1.amazonaws.com/494526681395/EventQueueCY"
       PolicyDocument:
         Statement:
           - Action:
@@ -92,10 +91,10 @@ Resources:
               - sqs:ReceiveMessage
             Effect: Allow
             Resource:
-              - !Ref EventQueueCY
+              - !GetAtt EventQueueCY.Arn
             Principal:
-              Service:
-                - sns.amazonaws.com
+              AWS: 
+                - "*"
 
   NotificationCY:
     Type: AWS::SNS::Topic
@@ -145,13 +144,11 @@ Resources:
         Version: 2012-10-17
         Statement:
           - Action:
-            - sns:Subscribe
-            - sns:Publish
-            - sns:ListSubscriptionsByTopic
+            - SNS:Publish
             Effect: Allow
             Principal:
-              Service: events.amazonaws.com
-            Resource: !Ref NotificationCY
+              AWS: "*"
+            Resource: "*"
       Topics:
         - !Ref NotificationCY
 
