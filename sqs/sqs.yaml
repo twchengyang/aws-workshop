@@ -12,7 +12,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: EventsConsumerCY
-      Role: arn:aws:iam::494526681395:role/for-aws-training
+      Role: !GetAtt LambdaRoleCY.Arn
       Handler: index.handler
       Runtime: nodejs12.x
       Code:
@@ -23,12 +23,43 @@ Resources:
       MemorySize: 128
       Timeout: 5
 
+  LambdaRoleCY:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaLogPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:*
+                Resource:
+                  - arn:aws:logs:*:*:*
+        - PolicyName: LambdaSQSPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:*
+                Resource:
+                  - !GetAtt EventQueueCY.Arn
+
   EventSourceMappingCY:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       EventSourceArn: !GetAtt EventQueueCY.Arn
       FunctionName: !GetAtt EventsConsumerCY.Arn
-      StartingPosition: LATEST
 
   EventQueueCY:
     Type: AWS::SQS::Queue
@@ -43,9 +74,13 @@ Resources:
         - Key: Purpose
           Value: aws-training
       VisibilityTimeout: 300
+
   DeadLetterQueueCY:
     Type: AWS::SQS::Queue
-  EventQueuePolicy:
+    Properties:
+      QueueName: DeadLetterQueueCY
+
+  EventQueuePolicyCY:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
@@ -62,39 +97,70 @@ Resources:
               Service:
                 - sns.amazonaws.com
 
-  SNSTopic:
+  NotificationCY:
     Type: AWS::SNS::Topic
     Properties:
-      # KmsMasterKeyId: 
-      Subscription:
-        - Endpoint: cheng.yang@thoughtworks.com
-          Protocol: email
-        - Endpoint: !GetAtt SQSQueue.Arn
-          Protocol: sqs
-  SNSPolicy:
+      TopicName: NotificationCY
+
+  SQSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties: 
+      TopicArn: !Ref NotificationCY
+      Endpoint: !GetAtt EventQueueCY.Arn
+      Protocol: sqs
+      RedrivePolicy: 
+        deadLetterTargetArn: !GetAtt DeadLetterQueueCY.Arn
+      DeliveryPolicy:
+        healthyRetryPolicy:
+          numRetries: 20
+          minDelayTarget: 10
+          maxDelayTarget: 30
+          numMinDelayRetries: 3
+          numMaxDelayRetries: 17
+          numNoDelayRetries: 0
+          backoffFunction: exponential
+  
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties: 
+      TopicArn: !Ref NotificationCY
+      Endpoint: cheng.yang@thoughtworks.com
+      Protocol: email
+      RedrivePolicy: 
+        deadLetterTargetArn: !GetAtt DeadLetterQueueCY.Arn
+      DeliveryPolicy:
+        healthyRetryPolicy:
+          numRetries: 20
+          minDelayTarget: 10
+          maxDelayTarget: 30
+          numMinDelayRetries: 3
+          numMaxDelayRetries: 17
+          numNoDelayRetries: 0
+          backoffFunction: exponential
+
+  NotificationPolicyCY:
     Type: AWS::SNS::TopicPolicy
     Properties:
       PolicyDocument:
         Version: 2012-10-17
         Statement:
           - Action:
-              - sns:Subscribe
-              - sns:Publish
-              - sns:ListSubscriptionsByTopic
+            - sns:Subscribe
+            - sns:Publish
+            - sns:ListSubscriptionsByTopic
             Effect: Allow
             Principal:
               Service: events.amazonaws.com
-            Resource: !Ref SNSTopic
+            Resource: !Ref NotificationCY
       Topics:
-        - !Ref SNSTopic
+        - !Ref NotificationCY
 
   
-  ScheduleTriggerRule:
+  ScheduleTriggerRuleCY:
     Type: AWS::Events::Rule
     Properties:
-      Name: ScheduleTriggerRule
-      ScheduleExpression: rate(5 minute)
+      ScheduleExpression: rate(5 minutes)
       State: ENABLED
       Targets:
       - Id: schedule-trigger-sns
-        Arn: !Ref SNSTopic
+        Arn: !Ref NotificationCY
